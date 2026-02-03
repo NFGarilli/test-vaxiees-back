@@ -1,6 +1,6 @@
 FactoryBot.define do
   factory :room do
-    sequence(:name) { |n| "Sala #{n}" }
+    sequence(:name) { |n| "Room #{n}" }
     capacity { 10 }
     has_projector { false }
     has_video_conference { false }

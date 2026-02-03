@@ -2,8 +2,8 @@ FactoryBot.define do
   factory :reservation do
     room
     user
-    title { "Reunión de equipo" }
-    # Default: próximo lunes de 10:00 a 11:00
+    title { "Team meeting" }
+    # Default: next Monday from 10:00 to 11:00
     starts_at { Time.zone.now.next_occurring(:monday).change(hour: 10, min: 0) }
     ends_at { Time.zone.now.next_occurring(:monday).change(hour: 11, min: 0) }
     recurring { nil }
@@ -25,12 +25,12 @@ FactoryBot.define do
     end
 
     trait :long do
-      # 3 horas (válido)
+      # 3 hours (valid)
       ends_at { Time.zone.now.next_occurring(:monday).change(hour: 13, min: 0) }
     end
 
     trait :too_long do
-      # 5 horas (inválido)
+      # 5 hours (invalid)
       ends_at { Time.zone.now.next_occurring(:monday).change(hour: 15, min: 0) }
     end
   end

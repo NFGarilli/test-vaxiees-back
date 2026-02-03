@@ -1,8 +1,8 @@
 # Room Reservations API
 
-Sistema de gestión de reservas de salas de reuniones.
+Meeting room reservation management system.
 
-## Requisitos
+## Requirements
 
 - Ruby 3.2+
 - Bundler
@@ -10,48 +10,48 @@ Sistema de gestión de reservas de salas de reuniones.
 ## Setup
 
 ```bash
-# Instalar dependencias
+# Install dependencies
 bundle install
 
-# Crear base de datos
+# Create database
 rails db:migrate
 
-# Verificar que funciona
+# Verify it works
 bundle exec rspec
 ```
 
-## Comandos Útiles
+## Useful Commands
 
 ```bash
-# Ejecutar tests
+# Run tests
 bundle exec rspec
 
-# Ejecutar tests con detalle
+# Run tests with details
 bundle exec rspec --format documentation
 
-# Levantar servidor
+# Start server
 rails server
 
-# Consola interactiva
+# Interactive console
 rails console
 ```
 
-## Estructura del Proyecto
+## Project Structure
 
 ```
 app/
   models/
-    room.rb           # Modelo de sala
-    user.rb           # Modelo de usuario
-    reservation.rb    # Modelo de reserva
+    room.rb           # Room model
+    user.rb           # User model
+    reservation.rb    # Reservation model
   controllers/
-    api/v1/           # Controladores API (por implementar)
+    api/v1/           # API controllers (to implement)
 spec/
-  models/             # Tests de modelos
-  factories/          # Factories para tests
-  requests/           # Tests de API (por implementar)
+  models/             # Model tests
+  factories/          # Test factories
+  requests/           # API tests (to implement)
 ```
 
-## Documentación
+## Documentation
 
-Ver `CLAUDE.md` para instrucciones detalladas sobre las reglas de negocio a implementar.
+See `CLAUDE.md` for detailed instructions on the business rules to implement.

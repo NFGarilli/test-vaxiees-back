@@ -1,52 +1,52 @@
-# Room Reservations - Prueba Técnica
+# Room Reservations - Technical Test
 
-## Contexto del Proyecto
+## Project Context
 
-Este es un sistema de reservas de salas de reuniones. Tu tarea es implementar las reglas de negocio y la API REST siguiendo TDD.
+This is a meeting room reservation system. Your task is to implement the business rules and REST API following TDD.
 
-## Stack Técnico
+## Tech Stack
 
 - **Rails 8** (API mode)
-- **SQLite** (ya configurado, sin setup adicional)
-- **RSpec** para testing
-- **FactoryBot** para fixtures
-- **Shoulda Matchers** para validaciones
+- **SQLite** (already configured, no additional setup)
+- **RSpec** for testing
+- **FactoryBot** for fixtures
+- **Shoulda Matchers** for validations
 
-## Comandos Útiles
+## Useful Commands
 
 ```bash
-# Ejecutar tests
+# Run tests
 bundle exec rspec
 
-# Ejecutar un test específico
+# Run a specific test
 bundle exec rspec spec/models/reservation_spec.rb
 
-# Ejecutar tests con output detallado
+# Run tests with detailed output
 bundle exec rspec --format documentation
 
-# Levantar servidor
+# Start server
 rails server
 
-# Consola de Rails
+# Rails console
 rails console
 ```
 
-## Modelos Existentes
+## Existing Models
 
-Los modelos ya están creados con sus migraciones:
+Models are already created with their migrations:
 
 ### Room
-- `name` (string) - Nombre único de la sala
-- `capacity` (integer) - Capacidad máxima
+- `name` (string) - Unique room name
+- `capacity` (integer) - Maximum capacity
 - `has_projector` (boolean)
 - `has_video_conference` (boolean)
 - `floor` (integer)
 
 ### User
 - `name` (string)
-- `email` (string) - Único
+- `email` (string) - Unique
 - `department` (string)
-- `max_capacity_allowed` (integer) - Capacidad máxima de sala que puede reservar
+- `max_capacity_allowed` (integer) - Maximum room capacity they can book
 - `is_admin` (boolean) - Default false
 
 ### Reservation
@@ -57,73 +57,73 @@ Los modelos ya están creados con sus migraciones:
 - `ends_at` (datetime)
 - `recurring` (string) - null, 'daily', 'weekly'
 - `recurring_until` (date)
-- `cancelled_at` (datetime) - null si activa
+- `cancelled_at` (datetime) - null if active
 
-## Reglas de Negocio a Implementar
+## Business Rules to Implement
 
-### RN1: Sin solapamiento de reservas
-No puede haber dos reservas activas para la misma sala en el mismo horario.
+### BR1: No overlapping reservations
+There cannot be two active reservations for the same room at the same time.
 
-### RN2: Duración máxima de 4 horas
-Una reserva no puede durar más de 4 horas.
+### BR2: Maximum duration of 4 hours
+A reservation cannot last more than 4 hours.
 
-### RN3: Solo horario laboral
-Las reservas deben ser entre 9:00 y 18:00, de lunes a viernes.
+### BR3: Business hours only
+Reservations must be between 9:00 AM and 6:00 PM, Monday through Friday.
 
-### RN4: Restricción de capacidad
-Usuarios normales solo pueden reservar salas con capacidad ≤ su `max_capacity_allowed`. Admins pueden reservar cualquier sala.
+### BR4: Capacity restriction
+Regular users can only book rooms with capacity ≤ their `max_capacity_allowed`. Admins can book any room.
 
-### RN5: Máximo 3 reservas activas
-Un usuario normal no puede tener más de 3 reservas activas (futuras, no canceladas). Admins sin límite.
+### BR5: Maximum 3 active reservations
+A regular user cannot have more than 3 active reservations (future, not cancelled). Admins have no limit.
 
-### RN6: Cancelación anticipada
-Solo se puede cancelar una reserva si faltan más de 60 minutos para el inicio.
+### BR6: Advance cancellation
+A reservation can only be cancelled if there are more than 60 minutes until start time.
 
-### RN7: Reservas recurrentes
-Al crear reservas recurrentes, todas las ocurrencias deben cumplir las reglas. Si alguna falla, no se crea ninguna.
+### BR7: Recurring reservations
+When creating recurring reservations, all occurrences must comply with the rules. If any fails, none are created.
 
-## Flujo de Trabajo TDD
+## TDD Workflow
 
-1. **Escribe el test primero** - Describe el comportamiento esperado
-2. **Verifica que falla** - `bundle exec rspec` debe mostrar rojo
-3. **Implementa el código mínimo** - Solo lo necesario para pasar el test
-4. **Verifica que pasa** - `bundle exec rspec` debe mostrar verde
-5. **Refactoriza si es necesario** - Mantén los tests en verde
-6. **Commit** - Un commit por cada ciclo red-green-refactor
+1. **Write the test first** - Describe the expected behavior
+2. **Verify it fails** - `bundle exec rspec` should show red
+3. **Implement minimum code** - Only what's needed to pass the test
+4. **Verify it passes** - `bundle exec rspec` should show green
+5. **Refactor if needed** - Keep tests green
+6. **Commit** - One commit per red-green-refactor cycle
 
-## Ejemplo de Test
+## Test Example
 
 ```ruby
 # spec/models/reservation_spec.rb
 RSpec.describe Reservation, type: :model do
-  describe 'RN2: Duración máxima' do
-    it 'no permite reservas de más de 4 horas' do
+  describe 'BR2: Maximum duration' do
+    it 'does not allow reservations longer than 4 hours' do
       reservation = build(:reservation,
         starts_at: Time.zone.parse('2024-01-15 10:00'),
-        ends_at: Time.zone.parse('2024-01-15 15:00') # 5 horas
+        ends_at: Time.zone.parse('2024-01-15 15:00') # 5 hours
       )
 
       expect(reservation).not_to be_valid
-      expect(reservation.errors[:base]).to include('La reserva no puede durar más de 4 horas')
+      expect(reservation.errors[:base]).to include('Reservation cannot last more than 4 hours')
     end
   end
 end
 ```
 
-## Tips para usar Claude Code
+## Tips for Using Claude Code
 
-- Pide que genere los tests primero, luego la implementación
-- Sé específico sobre los mensajes de error que quieres
-- Pide que cubra edge cases
-- Revisa el código generado antes de hacer commit
-- Si algo no funciona, describe el error y pide corrección
+- Ask it to generate tests first, then implementation
+- Be specific about the error messages you want
+- Ask it to cover edge cases
+- Review generated code before committing
+- If something doesn't work, describe the error and ask for correction
 
-## API Endpoints (a implementar)
+## API Endpoints (to implement)
 
 ```
 GET    /api/v1/rooms
 GET    /api/v1/rooms/:id
-POST   /api/v1/rooms (solo admin)
+POST   /api/v1/rooms (admin only)
 GET    /api/v1/rooms/:id/availability?date=YYYY-MM-DD
 
 GET    /api/v1/users
@@ -136,14 +136,14 @@ GET    /api/v1/reservations/:id
 PATCH  /api/v1/reservations/:id/cancel
 ```
 
-## Estructura de Commits Esperada
+## Expected Commit Structure
 
 ```
 test(room): add validation tests for Room model
 feat(room): implement Room validations
 test(user): add validation tests for User model
 feat(user): implement User validations
-test(reservation): add RN1 overlapping tests
+test(reservation): add BR1 overlapping tests
 feat(reservation): implement no-overlap validation
 ...
 ```
