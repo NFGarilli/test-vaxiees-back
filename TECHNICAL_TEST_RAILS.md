@@ -9,7 +9,7 @@
 | **AI Usage** | **MANDATORY** - You must use AI (Claude Code, Copilot, etc.). Tests without AI usage will not be evaluated. |
 | **Deliverable** | Git repository with all tests passing |
 
-> **We want to see your best AI-assisted development practices. The more skilled you are at programming with AI, make it evident.**
+> **This test is designed to showcase your AI-assisted development skills. Impress us.**
 
 ---
 
