@@ -29,6 +29,26 @@ class Reservation < ApplicationRecord
     update(cancelled_at: Time.current)
   end
 
+  # Wraps save in a transaction with row-level locking to prevent
+  # race conditions on overlap (BR1) and active limit (BR5).
+  def save(**options, &block)
+    return super unless new_record? || changed?
+
+    self.class.transaction do
+      # Lock existing reservations for this room to serialize overlap checks
+      if room_id.present?
+        self.class.lock.where(room_id: room_id).where(cancelled_at: nil).load
+      end
+
+      # Lock user's active reservations to serialize limit checks
+      if user_id.present?
+        self.class.lock.where(user_id: user_id).where(cancelled_at: nil).load
+      end
+
+      super
+    end
+  end
+
   private
 
   def ends_at_after_starts_at
@@ -40,7 +60,7 @@ class Reservation < ApplicationRecord
   end
 
   def no_overlapping_reservations
-    return if room.nil? || starts_at.nil? || ends_at.nil?
+    return if room_id.nil? || starts_at.nil? || ends_at.nil?
 
     overlapping = Reservation.active
       .where(room_id: room_id)
@@ -66,14 +86,14 @@ class Reservation < ApplicationRecord
 
     unless starts_at.on_weekday? && ends_at.on_weekday? &&
            starts_at.hour >= 9 && ends_at.hour <= 18 &&
-           (ends_at.hour < 18 || ends_at.min == 0) &&
-           starts_at >= starts_at.change(hour: 9, min: 0)
+           (ends_at.hour < 18 || (ends_at.hour == 18 && ends_at.min == 0 && ends_at.sec == 0)) &&
+           (starts_at.hour > 9 || (starts_at.hour == 9 && starts_at.min >= 0))
       errors.add(:base, "Reservations must be within business hours (9:00-18:00, Monday-Friday)")
     end
   end
 
   def room_capacity_for_user
-    return if room.nil? || user.nil?
+    return if room_id.nil? || user_id.nil?
     return if user.is_admin?
 
     if room.capacity > user.max_capacity_allowed
@@ -82,7 +102,7 @@ class Reservation < ApplicationRecord
   end
 
   def active_reservation_limit
-    return if user.nil?
+    return if user_id.nil?
     return if user.is_admin?
 
     active_count = Reservation.active.future.where(user_id: user_id)

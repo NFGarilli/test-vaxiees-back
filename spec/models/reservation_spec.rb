@@ -246,6 +246,33 @@ RSpec.describe Reservation, type: :model do
 
       expect(reservation).not_to be_valid
     end
+
+    it 'rejects a reservation starting at 8:59' do
+      reservation = build(:reservation,
+        starts_at: monday.change(hour: 8, min: 59),
+        ends_at: monday.change(hour: 10))
+
+      expect(reservation).not_to be_valid
+      expect(reservation.errors[:base]).to include(a_string_matching(/business hours/i))
+    end
+
+    it 'rejects a reservation ending at 18:01' do
+      reservation = build(:reservation,
+        starts_at: monday.change(hour: 17),
+        ends_at: monday.change(hour: 18, min: 1))
+
+      expect(reservation).not_to be_valid
+      expect(reservation.errors[:base]).to include(a_string_matching(/business hours/i))
+    end
+
+    it 'allows a reservation on Friday within business hours' do
+      friday = Time.zone.now.next_occurring(:friday)
+      reservation = build(:reservation,
+        starts_at: friday.change(hour: 9),
+        ends_at: friday.change(hour: 10))
+
+      expect(reservation).to be_valid
+    end
   end
 
   describe 'BR4: Capacity restriction by user' do
@@ -339,6 +366,30 @@ RSpec.describe Reservation, type: :model do
         ends_at: monday.change(hour: 11))
 
       expect(reservation).to be_valid
+    end
+
+    it 'allows exactly 3 active reservations' do
+      user_with_two = create(:user)
+      2.times do |i|
+        create(:reservation, user: user_with_two,
+          starts_at: monday.change(hour: 10 + i),
+          ends_at: monday.change(hour: 11 + i))
+      end
+
+      reservation = build(:reservation, user: user_with_two,
+        starts_at: monday.change(hour: 14),
+        ends_at: monday.change(hour: 15))
+
+      expect(reservation).to be_valid
+    end
+
+    it 'counts reservations across different rooms' do
+      reservation = build(:reservation, user: user, room: create(:room),
+        starts_at: monday.change(hour: 14),
+        ends_at: monday.change(hour: 15))
+
+      expect(reservation).not_to be_valid
+      expect(reservation.errors[:base]).to include(a_string_matching(/3 active/i))
     end
 
     context 'when user is admin' do
