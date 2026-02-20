@@ -15,6 +15,60 @@ class Reservation < ApplicationRecord
   validate :room_capacity_for_user
   validate :active_reservation_limit
 
+  # BR7: Creates all occurrences of a recurring reservation atomically.
+  # Returns { success: true/false, reservations: [...], errors: [...] }
+  def self.create_recurring(attrs)
+    recurring = attrs[:recurring]
+    recurring_until = attrs[:recurring_until]
+    starts_at = attrs[:starts_at]
+    ends_at = attrs[:ends_at]
+
+    unless %w[daily weekly].include?(recurring)
+      return { success: false, reservations: [], errors: [ "recurring must be daily or weekly" ] }
+    end
+
+    if recurring_until.nil?
+      return { success: false, reservations: [], errors: [ "recurring_until is required for recurring reservations" ] }
+    end
+
+    if starts_at.present? && recurring_until < starts_at.to_date
+      return { success: false, reservations: [], errors: [ "recurring_until must be on or after the start date" ] }
+    end
+
+    occurrences = build_occurrences(attrs)
+
+    # Validate all occurrences before saving any
+    all_errors = validate_occurrences(occurrences)
+    if all_errors.any?
+      return { success: false, reservations: [], errors: all_errors }
+    end
+
+    # Save all in a single transaction with locking
+    transaction do
+      # Acquire locks once for the entire batch
+      lock.where(room_id: attrs[:room_id]).where(cancelled_at: nil).load if attrs[:room_id].present?
+      lock.where(user_id: attrs[:user_id]).where(cancelled_at: nil).load if attrs[:user_id].present?
+
+      # Re-validate after acquiring locks to prevent race conditions
+      all_errors = validate_occurrences(occurrences)
+      if all_errors.any?
+        raise ActiveRecord::Rollback
+      end
+
+      occurrences.each do |reservation|
+        unless reservation.save(validate: false)
+          raise ActiveRecord::Rollback
+        end
+      end
+    end
+
+    if all_errors.any?
+      return { success: false, reservations: [], errors: all_errors }
+    end
+
+    { success: true, reservations: occurrences, errors: [] }
+  end
+
   def cancel
     if cancelled_at.present?
       errors.add(:base, "Reservation is already cancelled")
@@ -35,12 +89,10 @@ class Reservation < ApplicationRecord
     return super unless new_record? || changed?
 
     self.class.transaction do
-      # Lock existing reservations for this room to serialize overlap checks
       if room_id.present?
         self.class.lock.where(room_id: room_id).where(cancelled_at: nil).load
       end
 
-      # Lock user's active reservations to serialize limit checks
       if user_id.present?
         self.class.lock.where(user_id: user_id).where(cancelled_at: nil).load
       end
@@ -50,6 +102,78 @@ class Reservation < ApplicationRecord
   end
 
   private
+
+  # Builds all occurrence records for a recurring reservation.
+  # For daily: skips weekends. For weekly: same weekday each week.
+  def self.build_occurrences(attrs)
+    starts_at = attrs[:starts_at]
+    ends_at = attrs[:ends_at]
+    recurring = attrs[:recurring]
+    recurring_until = attrs[:recurring_until]
+    duration = ends_at - starts_at
+
+    occurrences = []
+    current_start = starts_at
+
+    while current_start.to_date <= recurring_until
+      if current_start.on_weekday?
+        occurrences << new(
+          room_id: attrs[:room_id],
+          user_id: attrs[:user_id],
+          title: attrs[:title],
+          starts_at: current_start,
+          ends_at: current_start + duration,
+          recurring: recurring,
+          recurring_until: recurring_until
+        )
+      end
+
+      current_start += (recurring == "daily" ? 1.day : 1.week)
+    end
+
+    occurrences
+  end
+  private_class_method :build_occurrences
+
+  # Validates all occurrences, including cross-occurrence overlap
+  # and cumulative active limit checks.
+  def self.validate_occurrences(occurrences)
+    errors = []
+
+    occurrences.each_with_index do |reservation, index|
+      # Check individual BR1-BR4 validations
+      unless reservation.valid?
+        reservation.errors.full_messages.each do |msg|
+          errors << "Occurrence ##{index + 1}: #{msg}"
+        end
+      end
+    end
+
+    # Check for overlaps between occurrences themselves
+    occurrences.each_with_index do |a, i|
+      occurrences[(i + 1)..].each_with_index do |b, j|
+        if a.room_id == b.room_id && a.starts_at < b.ends_at && a.ends_at > b.starts_at
+          errors << "Occurrences ##{i + 1} and ##{i + j + 2} overlap with each other"
+        end
+      end
+    end
+
+    # Check cumulative active reservation limit (BR5) across all occurrences
+    if occurrences.any?
+      user = occurrences.first.user
+      if user.present? && !user.is_admin?
+        existing_active = Reservation.active.future.where(user_id: user.id).count
+        total = existing_active + occurrences.count
+        if total > 3
+          errors << "Total recurring occurrences (#{occurrences.count}) plus existing active " \
+                    "reservations (#{existing_active}) would exceed the limit of 3 active reservations"
+        end
+      end
+    end
+
+    errors
+  end
+  private_class_method :validate_occurrences
 
   def ends_at_after_starts_at
     return if starts_at.nil? || ends_at.nil?

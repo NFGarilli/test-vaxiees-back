@@ -461,4 +461,216 @@ RSpec.describe Reservation, type: :model do
       end
     end
   end
+
+  describe 'BR7: Recurring reservations' do
+    let(:room) { create(:room) }
+    let(:user) { create(:user, :admin) }
+    let(:monday) { Time.zone.now.next_occurring(:monday) }
+
+    describe '.create_recurring' do
+      context 'with weekly recurrence' do
+        it 'creates reservations for each week until recurring_until' do
+          attrs = {
+            room_id: room.id, user_id: user.id, title: "Standup",
+            starts_at: monday.change(hour: 10),
+            ends_at: monday.change(hour: 11),
+            recurring: "weekly",
+            recurring_until: (monday + 3.weeks).to_date
+          }
+
+          result = Reservation.create_recurring(attrs)
+
+          expect(result[:success]).to be true
+          expect(result[:reservations].size).to eq(4)
+          result[:reservations].each do |r|
+            expect(r).to be_persisted
+            expect(r.starts_at.wday).to eq(1) # Monday
+          end
+        end
+      end
+
+      context 'with daily recurrence' do
+        it 'creates reservations for each weekday until recurring_until' do
+          attrs = {
+            room_id: room.id, user_id: user.id, title: "Daily sync",
+            starts_at: monday.change(hour: 9),
+            ends_at: monday.change(hour: 10),
+            recurring: "daily",
+            recurring_until: (monday + 4.days).to_date # Mon-Fri
+          }
+
+          result = Reservation.create_recurring(attrs)
+
+          expect(result[:success]).to be true
+          expect(result[:reservations]).to all(be_persisted)
+          result[:reservations].each do |r|
+            expect(r.starts_at).to be_on_weekday
+          end
+        end
+
+        it 'skips weekends for daily recurrence' do
+          # Start on Friday, recurring_until next Tuesday
+          friday = Time.zone.now.next_occurring(:friday)
+          attrs = {
+            room_id: room.id, user_id: user.id, title: "Daily sync",
+            starts_at: friday.change(hour: 10),
+            ends_at: friday.change(hour: 11),
+            recurring: "daily",
+            recurring_until: (friday + 4.days).to_date # Fri -> next Tue
+          }
+
+          result = Reservation.create_recurring(attrs)
+
+          expect(result[:success]).to be true
+          days = result[:reservations].map { |r| r.starts_at.wday }
+          expect(days).not_to include(0, 6) # No Sunday(0) or Saturday(6)
+        end
+      end
+
+      context 'all-or-nothing behavior' do
+        it 'creates no reservations if any occurrence overlaps (BR1)' do
+          # Create an existing reservation on the 2nd week
+          second_monday = monday + 1.week
+          create(:reservation, room: room,
+            starts_at: second_monday.change(hour: 10),
+            ends_at: second_monday.change(hour: 11))
+
+          attrs = {
+            room_id: room.id, user_id: user.id, title: "Weekly",
+            starts_at: monday.change(hour: 10),
+            ends_at: monday.change(hour: 11),
+            recurring: "weekly",
+            recurring_until: (monday + 3.weeks).to_date
+          }
+
+          expect { Reservation.create_recurring(attrs) }
+            .not_to change(Reservation, :count)
+
+          result = Reservation.create_recurring(attrs)
+          expect(result[:success]).to be false
+          expect(result[:errors]).to be_present
+        end
+
+        it 'creates no reservations if any occurrence violates BR2 (duration)' do
+          attrs = {
+            room_id: room.id, user_id: user.id, title: "Long meeting",
+            starts_at: monday.change(hour: 9),
+            ends_at: monday.change(hour: 14), # 5 hours
+            recurring: "weekly",
+            recurring_until: (monday + 1.week).to_date
+          }
+
+          expect { Reservation.create_recurring(attrs) }
+            .not_to change(Reservation, :count)
+        end
+
+        it 'creates no reservations if any occurrence violates BR3 (business hours)' do
+          attrs = {
+            room_id: room.id, user_id: user.id, title: "Late meeting",
+            starts_at: monday.change(hour: 17),
+            ends_at: monday.change(hour: 19), # ends after 18:00
+            recurring: "weekly",
+            recurring_until: (monday + 1.week).to_date
+          }
+
+          expect { Reservation.create_recurring(attrs) }
+            .not_to change(Reservation, :count)
+        end
+
+        it 'creates no reservations if total exceeds BR5 active limit' do
+          regular_user = create(:user)
+          attrs = {
+            room_id: room.id, user_id: regular_user.id, title: "Recurring",
+            starts_at: monday.change(hour: 10),
+            ends_at: monday.change(hour: 11),
+            recurring: "weekly",
+            recurring_until: (monday + 3.weeks).to_date # 4 occurrences > 3 limit
+          }
+
+          expect { Reservation.create_recurring(attrs) }
+            .not_to change(Reservation, :count)
+        end
+      end
+
+      context 'validation edge cases' do
+        it 'requires recurring_until when recurring is set' do
+          attrs = {
+            room_id: room.id, user_id: user.id, title: "Weekly",
+            starts_at: monday.change(hour: 10),
+            ends_at: monday.change(hour: 11),
+            recurring: "weekly",
+            recurring_until: nil
+          }
+
+          result = Reservation.create_recurring(attrs)
+          expect(result[:success]).to be false
+          expect(result[:errors]).to include(a_string_matching(/recurring_until/i))
+        end
+
+        it 'requires recurring_until to be after starts_at date' do
+          attrs = {
+            room_id: room.id, user_id: user.id, title: "Weekly",
+            starts_at: monday.change(hour: 10),
+            ends_at: monday.change(hour: 11),
+            recurring: "weekly",
+            recurring_until: (monday - 1.week).to_date
+          }
+
+          result = Reservation.create_recurring(attrs)
+          expect(result[:success]).to be false
+        end
+
+        it 'rejects invalid recurring value' do
+          attrs = {
+            room_id: room.id, user_id: user.id, title: "Meeting",
+            starts_at: monday.change(hour: 10),
+            ends_at: monday.change(hour: 11),
+            recurring: "monthly",
+            recurring_until: (monday + 1.month).to_date
+          }
+
+          result = Reservation.create_recurring(attrs)
+          expect(result[:success]).to be false
+          expect(result[:errors]).to include(a_string_matching(/daily.*weekly/i))
+        end
+
+        it 'creates a single occurrence when recurring_until equals starts_at date' do
+          attrs = {
+            room_id: room.id, user_id: user.id, title: "Once",
+            starts_at: monday.change(hour: 10),
+            ends_at: monday.change(hour: 11),
+            recurring: "weekly",
+            recurring_until: monday.to_date
+          }
+
+          result = Reservation.create_recurring(attrs)
+          expect(result[:success]).to be true
+          expect(result[:reservations].size).to eq(1)
+        end
+      end
+
+      context 'concurrency' do
+        it 'uses a transaction so partial saves cannot occur' do
+          # Create a blocker on the 3rd occurrence
+          third_monday = monday + 2.weeks
+          create(:reservation, room: room,
+            starts_at: third_monday.change(hour: 10),
+            ends_at: third_monday.change(hour: 11))
+
+          attrs = {
+            room_id: room.id, user_id: user.id, title: "Weekly",
+            starts_at: monday.change(hour: 10),
+            ends_at: monday.change(hour: 11),
+            recurring: "weekly",
+            recurring_until: (monday + 3.weeks).to_date
+          }
+
+          count_before = Reservation.count
+          Reservation.create_recurring(attrs)
+          # Only the blocker should exist, no partial saves
+          expect(Reservation.count).to eq(count_before)
+        end
+      end
+    end
+  end
 end
