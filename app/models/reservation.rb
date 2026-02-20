@@ -8,6 +8,7 @@ class Reservation < ApplicationRecord
   validates :title, presence: true
   validates :starts_at, presence: true
   validates :ends_at, presence: true
+  validates :recurring, inclusion: { in: %w[daily weekly], message: "must be daily or weekly" }, allow_nil: true
   validate :ends_at_after_starts_at
   validate :no_overlapping_reservations
   validate :maximum_duration

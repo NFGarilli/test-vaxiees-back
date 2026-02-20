@@ -11,6 +11,27 @@ RSpec.describe Reservation, type: :model do
     it { is_expected.to validate_presence_of(:starts_at) }
     it { is_expected.to validate_presence_of(:ends_at) }
 
+    it 'allows recurring to be nil' do
+      reservation = build(:reservation, recurring: nil)
+      expect(reservation).to be_valid
+    end
+
+    it 'allows recurring to be daily' do
+      reservation = build(:reservation, recurring: "daily")
+      expect(reservation).to be_valid
+    end
+
+    it 'allows recurring to be weekly' do
+      reservation = build(:reservation, recurring: "weekly")
+      expect(reservation).to be_valid
+    end
+
+    it 'rejects invalid recurring values' do
+      reservation = build(:reservation, recurring: "monthly")
+      expect(reservation).not_to be_valid
+      expect(reservation.errors[:recurring]).to include("must be daily or weekly")
+    end
+
     it 'rejects ends_at before starts_at' do
       reservation = build(:reservation,
         starts_at: Time.zone.now.next_occurring(:monday).change(hour: 12),
@@ -26,6 +47,47 @@ RSpec.describe Reservation, type: :model do
 
       expect(reservation).not_to be_valid
       expect(reservation.errors[:ends_at]).to include("must be after starts_at")
+    end
+  end
+
+  describe 'scopes' do
+    let(:monday) { Time.zone.now.next_occurring(:monday) }
+
+    describe '.active' do
+      it 'includes reservations without cancelled_at' do
+        reservation = create(:reservation,
+          starts_at: monday.change(hour: 10),
+          ends_at: monday.change(hour: 11))
+
+        expect(Reservation.active).to include(reservation)
+      end
+
+      it 'excludes cancelled reservations' do
+        reservation = create(:reservation, :cancelled,
+          starts_at: monday.change(hour: 10),
+          ends_at: monday.change(hour: 11))
+
+        expect(Reservation.active).not_to include(reservation)
+      end
+    end
+
+    describe '.future' do
+      it 'includes reservations starting in the future' do
+        reservation = create(:reservation,
+          starts_at: monday.change(hour: 10),
+          ends_at: monday.change(hour: 11))
+
+        expect(Reservation.future).to include(reservation)
+      end
+
+      it 'excludes reservations that already started' do
+        past_monday = 2.weeks.ago.beginning_of_week(:monday)
+        reservation = create(:reservation,
+          starts_at: past_monday.change(hour: 10),
+          ends_at: past_monday.change(hour: 11))
+
+        expect(Reservation.future).not_to include(reservation)
+      end
     end
   end
 
