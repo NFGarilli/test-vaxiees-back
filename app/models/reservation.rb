@@ -139,9 +139,17 @@ class Reservation < ApplicationRecord
   # and cumulative active limit checks.
   def self.validate_occurrences(occurrences)
     errors = []
+    return errors if occurrences.empty?
+
+    # Preload associations once to avoid N+1 queries across occurrences
+    user = User.find_by(id: occurrences.first.user_id)
+    room = Room.find_by(id: occurrences.first.room_id)
+    occurrences.each do |r|
+      r.user = user if user
+      r.room = room if room
+    end
 
     occurrences.each_with_index do |reservation, index|
-      # Check individual BR1-BR4 validations
       unless reservation.valid?
         reservation.errors.full_messages.each do |msg|
           errors << "Occurrence ##{index + 1}: #{msg}"

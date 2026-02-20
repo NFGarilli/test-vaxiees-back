@@ -29,6 +29,18 @@ RSpec.describe Reservation, type: :model do
     end
   end
 
+  describe 'multiple validation errors' do
+    it 'accumulates errors from multiple violated rules' do
+      saturday = Time.zone.now.next_occurring(:saturday)
+      reservation = build(:reservation,
+        starts_at: saturday.change(hour: 8),
+        ends_at: saturday.change(hour: 14)) # weekend + before 9 + 6 hours > 4
+
+      expect(reservation).not_to be_valid
+      expect(reservation.errors[:base].size).to be >= 2
+    end
+  end
+
   describe 'BR1: No overlapping reservations' do
     let(:room) { create(:room) }
     let(:user) { create(:user) }
@@ -133,6 +145,17 @@ RSpec.describe Reservation, type: :model do
           ends_at: monday.change(hour: 12))
 
         expect(reservation).to be_valid
+      end
+    end
+
+    context 'when overlap is just 1 minute' do
+      it 'rejects even a 1-minute overlap' do
+        reservation = build(:reservation, room: room,
+          starts_at: monday.change(hour: 11, min: 59),
+          ends_at: monday.change(hour: 13))
+
+        expect(reservation).not_to be_valid
+        expect(reservation.errors[:base]).to include(a_string_matching(/overlap/i))
       end
     end
 
@@ -589,6 +612,61 @@ RSpec.describe Reservation, type: :model do
 
           expect { Reservation.create_recurring(attrs) }
             .not_to change(Reservation, :count)
+        end
+
+        it 'creates no reservations if room capacity exceeds user limit (BR4)' do
+          limited_user = create(:user, :limited, max_capacity_allowed: 5)
+          big_room = create(:room, :large, capacity: 20)
+
+          attrs = {
+            room_id: big_room.id, user_id: limited_user.id, title: "Weekly",
+            starts_at: monday.change(hour: 10),
+            ends_at: monday.change(hour: 11),
+            recurring: "weekly",
+            recurring_until: (monday + 1.week).to_date
+          }
+
+          expect { Reservation.create_recurring(attrs) }
+            .not_to change(Reservation, :count)
+        end
+
+        it 'rejects when existing reservations plus occurrences exceed BR5 limit' do
+          regular_user = create(:user)
+          # Create 2 existing reservations
+          2.times do |i|
+            create(:reservation, user: regular_user,
+              starts_at: monday.change(hour: 14 + i),
+              ends_at: monday.change(hour: 15 + i))
+          end
+
+          # Try to add 2 more via recurring (total would be 4 > 3)
+          tuesday = monday + 1.day
+          attrs = {
+            room_id: room.id, user_id: regular_user.id, title: "Recurring",
+            starts_at: monday.change(hour: 9),
+            ends_at: monday.change(hour: 10),
+            recurring: "daily",
+            recurring_until: tuesday.to_date
+          }
+
+          expect { Reservation.create_recurring(attrs) }
+            .not_to change(Reservation, :count)
+        end
+      end
+
+      context 'admin with recurring reservations' do
+        it 'allows admin to create recurring beyond 3 active limit' do
+          attrs = {
+            room_id: room.id, user_id: user.id, title: "Admin weekly",
+            starts_at: monday.change(hour: 10),
+            ends_at: monday.change(hour: 11),
+            recurring: "weekly",
+            recurring_until: (monday + 4.weeks).to_date # 5 occurrences
+          }
+
+          result = Reservation.create_recurring(attrs)
+          expect(result[:success]).to be true
+          expect(result[:reservations].size).to eq(5)
         end
       end
 
