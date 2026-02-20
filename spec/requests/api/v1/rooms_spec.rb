@@ -121,6 +121,45 @@ RSpec.describe "Api::V1::Rooms", type: :request do
       expect(parsed_body["errors"]).to include(a_string_matching(/date/i))
     end
 
+    it "returns error when date param is missing" do
+      get "/api/v1/rooms/#{room.id}/availability"
+
+      expect(response).to have_http_status(:bad_request)
+      expect(parsed_body["errors"]).to include(a_string_matching(/date/i))
+    end
+
+    it "returns correct slots with multiple reservations in a day" do
+      create(:reservation, room: room,
+        starts_at: monday.change(hour: 10),
+        ends_at: monday.change(hour: 11))
+      create(:reservation, room: room,
+        starts_at: monday.change(hour: 14),
+        ends_at: monday.change(hour: 16))
+
+      get "/api/v1/rooms/#{room.id}/availability", params: { date: monday.to_date.to_s }
+
+      expect(response).to have_http_status(:ok)
+      slots = parsed_body["available_slots"]
+      expect(slots.size).to eq(3) # 9-10, 11-14, 16-18
+    end
+
+    it "returns no available slots when fully booked" do
+      create(:reservation, room: room,
+        starts_at: monday.change(hour: 9),
+        ends_at: monday.change(hour: 13))
+      create(:reservation, room: room,
+        starts_at: monday.change(hour: 13),
+        ends_at: monday.change(hour: 17))
+      create(:reservation, room: room,
+        starts_at: monday.change(hour: 17),
+        ends_at: monday.change(hour: 18))
+
+      get "/api/v1/rooms/#{room.id}/availability", params: { date: monday.to_date.to_s }
+
+      expect(response).to have_http_status(:ok)
+      expect(parsed_body["available_slots"]).to eq([])
+    end
+
     it "returns 404 for non-existent room" do
       get "/api/v1/rooms/999/availability", params: { date: monday.to_date.to_s }
 

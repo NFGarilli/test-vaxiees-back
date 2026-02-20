@@ -29,6 +29,11 @@ module Api
 
       def availability
         room = Room.find(params[:id])
+
+        unless params[:date].present?
+          return render_errors("date parameter is required", status: :bad_request)
+        end
+
         date = Date.parse(params[:date])
 
         reservations = room.reservations.active

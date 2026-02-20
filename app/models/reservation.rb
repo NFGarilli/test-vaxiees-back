@@ -217,10 +217,13 @@ class Reservation < ApplicationRecord
   def within_business_hours
     return if starts_at.nil? || ends_at.nil?
 
-    unless starts_at.on_weekday? && ends_at.on_weekday? &&
-           starts_at.hour >= 9 && ends_at.hour <= 18 &&
-           (ends_at.hour < 18 || (ends_at.hour == 18 && ends_at.min == 0 && ends_at.sec == 0)) &&
-           (starts_at.hour > 9 || (starts_at.hour == 9 && starts_at.min >= 0))
+    business_start = starts_at.change(hour: 9, min: 0, sec: 0)
+    business_end = starts_at.change(hour: 18, min: 0, sec: 0)
+
+    unless starts_at.on_weekday? &&
+           starts_at.to_date == ends_at.to_date &&
+           starts_at >= business_start &&
+           ends_at <= business_end
       errors.add(:base, "Reservations must be within business hours (9:00-18:00, Monday-Friday)")
     end
   end

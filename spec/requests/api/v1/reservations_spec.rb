@@ -175,6 +175,23 @@ RSpec.describe "Api::V1::Reservations", type: :request do
         expect(parsed_body.size).to eq(3)
       end
 
+      it "creates daily recurring reservations skipping weekends" do
+        friday = Time.zone.now.next_occurring(:friday)
+        params = { reservation: {
+          room_id: room.id, user_id: admin.id, title: "Daily standup",
+          starts_at: friday.change(hour: 10).iso8601,
+          ends_at: friday.change(hour: 11).iso8601,
+          recurring: "daily",
+          recurring_until: (friday + 4.days).to_date.to_s # Fri-Tue (skip Sat/Sun)
+        } }
+
+        post "/api/v1/reservations", params: params
+
+        expect(response).to have_http_status(:created)
+        days = parsed_body.map { |r| Time.parse(r["starts_at"]).wday }
+        expect(days).not_to include(0, 6)
+      end
+
       it "returns errors when any occurrence is invalid" do
         # Block the 2nd week
         create(:reservation, room: room,

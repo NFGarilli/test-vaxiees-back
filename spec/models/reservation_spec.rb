@@ -91,6 +91,29 @@ RSpec.describe Reservation, type: :model do
     end
   end
 
+  describe 'edge case: very short reservation' do
+    it 'allows a 1-minute reservation within business hours' do
+      monday = Time.zone.now.next_occurring(:monday)
+      reservation = build(:reservation,
+        starts_at: monday.change(hour: 10),
+        ends_at: monday.change(hour: 10, min: 1))
+
+      expect(reservation).to be_valid
+    end
+  end
+
+  describe 'edge case: reservation spanning to next day' do
+    it 'rejects a reservation that spans overnight even on weekdays' do
+      monday = Time.zone.now.next_occurring(:monday)
+      reservation = build(:reservation,
+        starts_at: monday.change(hour: 17),
+        ends_at: (monday + 1.day).change(hour: 10))
+
+      expect(reservation).not_to be_valid
+      expect(reservation.errors[:base]).to include(a_string_matching(/business hours|4 hours/i))
+    end
+  end
+
   describe 'multiple validation errors' do
     it 'accumulates errors from multiple violated rules' do
       saturday = Time.zone.now.next_occurring(:saturday)
@@ -475,6 +498,18 @@ RSpec.describe Reservation, type: :model do
 
       expect(reservation).not_to be_valid
       expect(reservation.errors[:base]).to include(a_string_matching(/3 active/i))
+    end
+
+    it 'allows a new reservation after cancelling one (freeing a slot)' do
+      travel_to monday.change(hour: 8) do
+        user.reservations.first.cancel
+      end
+
+      reservation = build(:reservation, user: user,
+        starts_at: monday.change(hour: 14),
+        ends_at: monday.change(hour: 15))
+
+      expect(reservation).to be_valid
     end
 
     context 'when user is admin' do
