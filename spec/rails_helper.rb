@@ -76,6 +76,9 @@ RSpec.configure do |config|
   # FactoryBot configuration
   config.include FactoryBot::Syntax::Methods
 
+  # Time travel helpers
+  config.include ActiveSupport::Testing::TimeHelpers
+
   # Infer spec type from file location
   config.infer_spec_type_from_file_location!
 end
